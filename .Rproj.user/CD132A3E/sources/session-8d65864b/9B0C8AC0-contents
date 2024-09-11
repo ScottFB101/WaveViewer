@@ -90,8 +90,8 @@ ui <- page_fillable(
     nav_panel("Wave Rose", 
               id = "wave_rose_tab",
               layout_columns(
+                col_widths = c(2, 10),
                 page_sidebar(
-                  bg = "4cc9f0",
                   title = "Filters",
                   open = "desktop",
                   fill = TRUE,
