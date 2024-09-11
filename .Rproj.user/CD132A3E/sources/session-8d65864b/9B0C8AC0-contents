@@ -20,23 +20,23 @@ current_time <- format(Sys.time(), "T%H:%M:%SZ", tz = "UTC") %>%
 current_date <- Sys.Date()
 erddap_url <- glue("https://erddap.sensors.axds.co/erddap/tabledap/edu_ucsd_cdip_142.json?time%2Clatitude%2Clongitude%2Cz%2Csea_surface_wave_mean_period%2Csea_surface_wave_period_at_variance_spectral_density_maximum%2Csea_surface_wave_significant_height%2Csea_surface_wave_from_direction%2Cstation&time%3E=2000-01-01T04%3A45%3A00Z&time%3C={current_date}{current_time[1]}%3A{current_time[2]}%3A{current_time[3]}")
 
-res = GET(erddap_url)
+# res = GET(erddap_url)
 
 # full_erddap_list <- fromJSON(rawToChar(res$content))
 # full_erddap_data <- as.data.frame(full_erddap_list$table$rows)
 # colnames(full_erddap_data) <- full_erddap_list$table$columnNames
-
-# Filter and mutate to get non-blank wave periods
-# filtered_erddap_data <- full_erddap_data %>% 
-#   filter(!is.na(sea_surface_wave_mean_period)) %>% 
+# 
+# # Filter and mutate to get non-blank wave periods
+# filtered_erddap_data <- full_erddap_data %>%
+#   filter(!is.na(sea_surface_wave_mean_period)) %>%
 #   mutate(
 #     time = as.Date(time),
 #     year_month = lubridate::floor_date(time, unit = "month"),
 #     across(starts_with("sea"), as.numeric),
 #     sea_surface_wave_significant_height_ft = sea_surface_wave_significant_height * 3.28084,
 #     month = lubridate::month(time, label = TRUE)
-#   ) %>% 
-#   relocate(c("year_month", "month"), .after = time) %>% 
+#   ) %>%
+#   relocate(c("year_month", "month"), .after = time) %>%
 #   mutate(
 #     season = case_when(
 #       month %in% c("Dec", "Jan", "Feb") ~ "Winter",
@@ -45,14 +45,14 @@ res = GET(erddap_url)
 #       TRUE ~ "Autumn"
 #     )
 #   )
-
-# Summarize by month----
-# summarized_erddap_data <- filtered_erddap_data  %>% 
+# 
+# # Summarize by month----
+# summarized_erddap_data <- filtered_erddap_data  %>%
 #   group_by(month) %>%  # group
 #   group_split() %>% # split
-#   lapply(., function(x) { 
+#   lapply(., function(x) {
 #     grouped_frame <- with(
-#       x, 
+#       x,
 #       interp(
 #         x = sea_surface_wave_from_direction,
 #         y = sea_surface_wave_significant_height_ft,
@@ -62,20 +62,20 @@ res = GET(erddap_url)
 #         ny = 100,
 #         duplicate = "mean"
 #       )
-#     ) %>% 
-#       interp2xyz() %>% 
+#     ) %>%
+#       interp2xyz() %>%
 #       as.data.frame()
-#     
-#     group_month <- x %>% 
-#       pull(month) %>% 
+# 
+#     group_month <- x %>%
+#       pull(month) %>%
 #       unique()
-#     
-#     final_frame <- grouped_frame %>% 
-#       mutate(month = group_month) %>% 
+# 
+#     final_frame <- grouped_frame %>%
+#       mutate(month = group_month) %>%
 #       filter(!is.na(z))
-#     
-#   }) %>% 
-#   bind_rows() %>% 
+# 
+#   }) %>%
+#   bind_rows() %>%
 #   rename(
 #     sea_surface_wave_from_direction = x,
 #     sea_surface_wave_significant_height_ft = y,
@@ -85,33 +85,38 @@ res = GET(erddap_url)
 # unique_months <- unique(summarized_erddap_data$month)
 
 # Define UI for application that draws a histogram
-# ui <- page_sidebar(
-#   title = "Wave Dashboard",
-#   sidebar = sidebar(
-#     title = "Controls",
-#     selectInput(
-#       'month_selecter', 
-#       'Months Filter', 
-#       selected = unique_months, 
-#       choices = unique(summarized_erddap_data$month), 
-#       multiple=TRUE, 
-#       selectize=TRUE
-#       )
-#   ),
-#   plotOutput("wave_polar_plot")
-# )
-
 ui <- page_fillable(
+  tags$head(
+    tags$style(HTML("
+      #wave_polar_plot {
+        height: 100vh !important;
+      }
+    "))
+  ),
   navset_card_tab( 
     nav_panel("Wave Rose", 
               layout_sidebar(
-                sidebar = sidebarPanel(
-                  h3("Sidebar Content"),
-                  selectInput("var", "Choose a variable:", choices = c("mpg", "hp", "wt")),
-                  actionButton("action", "Action Button")
-                )
+                bg = "4cc9f0",
+                title = "Filters",
+                open = "desktop",
+                fillable = TRUE,
+                fill = TRUE,
+                sidebar = sidebar(
+                  title = "Controls",
+                  selectInput(
+                    'month_selecter',
+                    'Months Filter',
+                    selected = unique_months,
+                    choices = unique_months,
+                    multiple=TRUE,
+                    selectize=TRUE
+                    )
+                  )
                 ),
-              plotOutput("wave_polar_plot")
+              layout_column_wrap(
+                width = NULL,
+                plotOutput("wave_polar_plot", width = "100%", height = "100%", fill = TRUE)
+              )
               ), 
     nav_panel("Wave Time Series", "Page B content"), 
     nav_panel("", "Page C content"), 
