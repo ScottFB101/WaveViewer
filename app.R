@@ -10,7 +10,7 @@ library(akima)
 #TODO Add Leaflet map of buoy location,
 #TODO Add value boxes of current swell, direction, and period
 #TODO Add more graphs of seasonal swell, direction, period
-#TODO Add to Github
+#TODO Use a submit button for the graph
 
 # Load in Data 
 # Reading Erddap from direct link
@@ -104,7 +104,8 @@ ui <- page_fillable(
                       choices = unique_months,
                       multiple=TRUE,
                       selectize=TRUE
-                    )
+                    ),
+                    actionButton("update_months", "Update Months")
                   ),
                 ),
                 plotOutput("wave_polar_plot", width = "100%", height = "100%", fill = TRUE)
@@ -127,10 +128,19 @@ ui <- page_fillable(
 )
 
 server <- function(input, output) {
+
+  # Store the selected months, initially set to default values
+  selected_months <- reactiveVal(unique_months)
   
+  # Update the selected months only when the action button is clicked
+  observeEvent(input$update_months, {
+    selected_months(input$month_selecter)
+  })
+  
+  # Reactive data based on selected months
   data <- reactive({
     summarized_erddap_data %>% 
-      filter(month %in% input$month_selecter)
+      filter(month %in% selected_months())  # Use the reactive value for selected months
   })
   
   output$wave_polar_plot <- renderPlot({
