@@ -86,40 +86,32 @@ erddap_url <- glue("https://erddap.sensors.axds.co/erddap/tabledap/edu_ucsd_cdip
 
 # Define UI for application that draws a histogram
 ui <- page_fillable(
-  tags$head(
-    tags$style(HTML("
-      #wave_polar_plot {
-        height: 100vh !important;
-      }
-    "))
-  ),
   navset_card_tab( 
     nav_panel("Wave Rose", 
-              layout_sidebar(
-                bg = "4cc9f0",
-                title = "Filters",
-                open = "desktop",
-                fillable = TRUE,
-                fill = TRUE,
-                sidebar = sidebar(
-                  title = "Controls",
-                  selectInput(
-                    'month_selecter',
-                    'Months Filter',
-                    selected = unique_months,
-                    choices = unique_months,
-                    multiple=TRUE,
-                    selectize=TRUE
+              id = "wave_rose_tab",
+              layout_columns(
+                page_sidebar(
+                  bg = "4cc9f0",
+                  title = "Filters",
+                  open = "desktop",
+                  fill = TRUE,
+                  sidebar = sidebar(
+                    title = "Controls",
+                    selectInput(
+                      'month_selecter',
+                      'Months Filter',
+                      selected = unique_months,
+                      choices = unique_months,
+                      multiple=TRUE,
+                      selectize=TRUE
                     )
-                  )
+                  ),
                 ),
-              layout_column_wrap(
-                width = NULL,
                 plotOutput("wave_polar_plot", width = "100%", height = "100%", fill = TRUE)
-              )
+              ),
               ), 
     nav_panel("Wave Time Series", "Page B content"), 
-    nav_panel("", "Page C content"), 
+    nav_panel("Third", "Page C content"), 
     nav_spacer(),
     nav_menu( 
       "Other links", 
@@ -131,7 +123,7 @@ ui <- page_fillable(
       ), 
     ), 
   ), 
-  id = "tab" 
+  id = "tab"
 )
 
 server <- function(input, output) {
