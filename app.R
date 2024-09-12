@@ -7,13 +7,12 @@ library(httr)
 library(jsonlite)
 library(akima)
 library(bsicons)
+library(memoise)
 
 #TODO make text bigger on polar graph
 #TODO Add Leaflet map of buoy location,
-#TODO Add value boxes of current swell, direction, and period
-#TODO Add more graphs of seasonal swell, direction, period
-  #Make this a whole page of scrollable graphs
 #TODO add maestro (package) script that automatically loads data during early hours
+#TODO Memoise package to make polar plot caching plots much faster
 
 # Load in Data 
 # Reading Erddap from direct link
@@ -140,12 +139,69 @@ current_wave_stat_value_boxes <- list(
   )
 )
 
-#####Define UI----
+####Wave Period Plotly----
+wave_period_plotly <- plot_ly(data = median_stats_height_per_month_day, 
+        x = ~month_day, 
+        y = ~median_period,
+        type = 'scatter', 
+        mode = 'markers', 
+        #marker = list(color = '00b4d8', size = 5),
+        color = I('#00b4d8')
+        ) %>%
+  layout(
+    xaxis = list(
+      title = 'Date',
+      tickformat = '%b<br>%d',  # Format as abbreviated month
+      dtick = 'M1'        # 1-month interval for x-axis
+    ),
+    yaxis = list(
+      title = ''
+    ),
+    showlegend = FALSE,
+    font = list(family = 'Times New Roman', size = 14, color = '#000000')
+  ) %>% 
+  add_lines(
+    x = ~month_day, 
+    y = ~fitted(loess(median_period ~ as.numeric(month_day))),
+    line = list(color = '#0077b6', width = 2),
+    name = 'Smoothed Line'
+  )
+
+####Wave height Plotly----
+wave_height_plotly <- plot_ly(data = median_stats_height_per_month_day, 
+        x = ~month_day, 
+        y = ~median_wave_height, 
+        type = 'scatter', 
+        mode = 'markers', 
+        #marker = list(color = '00b4d8', size = 5),
+        color = I('#00b4d8')
+) %>%
+  layout(
+    xaxis = list(
+      title = 'Date',
+      tickformat = '%b<br>%d',  # Format as abbreviated month
+      dtick = 'M1'        # 1-month interval for x-axis
+    ),
+    yaxis = list(
+      title = ''
+    ),
+    showlegend = FALSE,
+    font = list(family = 'Times New Roman', size = 14, color = '#000000')
+  ) %>% 
+  add_lines(
+    x = ~month_day, 
+    y = ~fitted(loess(median_wave_height ~ as.numeric(month_day))),
+    line = list(color = '#0077b6', width = 2),
+    name = 'Smoothed Line'
+  )
+
+####Define UI----
 ui <- page_fillable(
   navset_card_tab( 
     #Nav Panel Wave Time Series
     nav_panel(
       "Current/Historical Swell Stats", 
+      style = "background-color: #ade8f4;",
       layout_columns(
         fill = FALSE,
         !!!current_wave_stat_value_boxes
@@ -187,9 +243,9 @@ ui <- page_fillable(
     nav_panel("Third", "Page C content"), 
     nav_spacer(),
     nav_menu( 
-      "Link to Date Source", 
+      "Link to Data Source", 
       nav_item( 
-        a("CDIP Data", href = "https://erddap.sensors.axds.co/erddap/info/edu_ucsd_cdip_142/index.html", target = "_blank") 
+        a("CDIP Data", href = "https://sensors.ioos.us/#metadata/103447/station/data", target = "_blank") 
       ), 
     ), 
   ), 
@@ -214,9 +270,9 @@ server <- function(input, output) {
   })
   
   output$wave_polar_plot <- renderPlot({
-    ggplot(data(), 
+    ggplot(data(),
            aes(x = sea_surface_wave_from_direction, y = sea_surface_wave_significant_height_ft, z = sea_surface_wave_mean_period)) +
-      geom_contour_filled(alpha = 0.75, breaks = c(2, 4, 6, 8, 10, 12, 14, 16)) + 
+      geom_contour_filled(alpha = 0.75, breaks = c(2, 4, 6, 8, 10, 12, 14, 16)) +
       scale_x_continuous(limits = c(180, 360),
                          breaks = seq(0, 360, by = 45),
                          minor_breaks = seq(0, 360, by = 15),
@@ -240,72 +296,22 @@ server <- function(input, output) {
             axis.title.y=element_blank()
       ) +
       guides(fill = guide_colorsteps(
-        ticks = TRUE, 
+        ticks = TRUE,
         show.limits = TRUE,
         even.steps = FALSE,
-        frame.linewidth = 0.55, 
-        frame.colour = "black", 
+        frame.linewidth = 0.55,
+        frame.colour = "black",
         ticks.colour = "black",
         ticks.linewidth = 0.3)
       )
   }) %>% bindCache(data())
-  
+
   output$interactive_wave_height_plot <- renderPlotly({
-    plot_ly(data = median_stats_height_per_month_day, 
-            x = ~month_day, 
-            y = ~median_wave_height, 
-            type = 'scatter', 
-            mode = 'markers', 
-            #marker = list(color = '00b4d8', size = 5),
-            color = I('#00b4d8')
-    ) %>%
-      layout(
-        xaxis = list(
-          title = 'Date',
-          tickformat = '%b<br>%d',  # Format as abbreviated month
-          dtick = 'M1'        # 1-month interval for x-axis
-        ),
-        yaxis = list(
-          title = ''
-        ),
-        showlegend = FALSE,
-        font = list(family = 'Times New Roman', size = 14, color = '#000000')
-      ) %>% 
-      add_lines(
-        x = ~month_day, 
-        y = ~fitted(loess(median_wave_height ~ as.numeric(month_day))),
-        line = list(color = '#0077b6', width = 2),
-        name = 'Smoothed Line'
-      )
+    wave_height_plotly
   })
   
   output$interactive_wave_period_plot <- renderPlotly({
-    plot_ly(data = median_stats_height_per_month_day, 
-            x = ~month_day, 
-            y = ~median_period,
-            type = 'scatter', 
-            mode = 'markers', 
-            #marker = list(color = '00b4d8', size = 5),
-            color = I('#00b4d8')
-    ) %>%
-      layout(
-        xaxis = list(
-          title = 'Date',
-          tickformat = '%b<br>%d',  # Format as abbreviated month
-          dtick = 'M1'        # 1-month interval for x-axis
-        ),
-        yaxis = list(
-          title = ''
-        ),
-        showlegend = FALSE,
-        font = list(family = 'Times New Roman', size = 14, color = '#000000')
-      ) %>% 
-      add_lines(
-        x = ~month_day, 
-        y = ~fitted(loess(median_period ~ as.numeric(month_day))),
-        line = list(color = '#0077b6', width = 2),
-        name = 'Smoothed Line'
-      )
+    wave_period_plotly 
   })
   
 }
