@@ -7,10 +7,11 @@ library(httr)
 library(jsonlite)
 library(akima)
 
+#TODO make text bigger on polar graph
 #TODO Add Leaflet map of buoy location,
 #TODO Add value boxes of current swell, direction, and period
 #TODO Add more graphs of seasonal swell, direction, period
-#TODO Use a submit button for the graph
+  #Make this a whole page of scrollable graphs
 
 # Load in Data 
 # Reading Erddap from direct link
@@ -178,7 +179,7 @@ server <- function(input, output) {
         ticks.colour = "black",
         ticks.linewidth = 0.3)
       )
-  })
+  }) %>% bindCache(data())
   
 }
 
