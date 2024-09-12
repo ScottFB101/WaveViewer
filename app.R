@@ -6,12 +6,14 @@ library(glue)
 library(httr)
 library(jsonlite)
 library(akima)
+library(bsicons)
 
 #TODO make text bigger on polar graph
 #TODO Add Leaflet map of buoy location,
 #TODO Add value boxes of current swell, direction, and period
 #TODO Add more graphs of seasonal swell, direction, period
   #Make this a whole page of scrollable graphs
+#TODO add maestro (package) script that automatically loads data during early hours
 
 # Load in Data 
 # Reading Erddap from direct link
@@ -82,22 +84,90 @@ erddap_url <- glue("https://erddap.sensors.axds.co/erddap/tabledap/edu_ucsd_cdip
 #     sea_surface_wave_significant_height_ft = y,
 #     sea_surface_wave_mean_period = z
 #     )
-# 
-# unique_months <- unique(summarized_erddap_data$month)
 
-# Define UI for application that draws a histogram
+unique_months <- unique(summarized_erddap_data$month)
+
+first_date_of_data_collection <- min(filtered_erddap_data$time)
+last_date_of_data_collection <- max(filtered_erddap_data$time)
+
+####Median Wave Stats processing----
+median_stats_height_per_month_day <- filtered_erddap_data %>%
+  group_by(month_day) %>% 
+  summarize(
+    median_wave_height = median(sea_surface_wave_significant_height_ft),
+    median_period = median(sea_surface_wave_mean_period)
+  ) %>% 
+  mutate(
+    month_day = paste("2024", month_day, sep = "-"),
+    month_day = as.Date(month_day, format = "%Y-%m-%d")
+  )
+
+####Current Wave Stats processing----
+current_wave_stats <- filtered_erddap_data %>% 
+  arrange(desc(time)) %>% 
+  slice(1)
+
+####Define Wave Time Series Cards----
+wave_series_cards <- list(
+  card(
+    card_header(glue("Median Wave Height (Ft) by Date ({first_date_of_data_collection}-{last_date_of_data_collection})")),
+    plotlyOutput("interactive_wave_height_plot"),
+    full_screen = TRUE
+  ),
+  card(
+    card_header(glue("Median Wave Period (Seconds) by Date ({first_date_of_data_collection}-{last_date_of_data_collection})")),
+    plotlyOutput("interactive_wave_period_plot"),
+    full_screen = TRUE
+  )
+)
+
+####Define Current Wave Stat Value Boxes----
+current_wave_stat_value_boxes <- list(
+  value_box(
+    title = "Current Wave Height",
+    value = paste0(round(current_wave_stats$sea_surface_wave_significant_height_ft, 2), "ft"),
+    showcase = bs_icon("tsunami")
+  ),
+  value_box(
+    title = "Current Wave Period",
+    value = paste0(round(current_wave_stats$sea_surface_wave_mean_period, 2), "s"),
+    showcase = bs_icon("water")
+  ),
+  value_box(
+    title = "Current Wave Direction",
+    value = paste0(round(current_wave_stats$sea_surface_wave_from_direction, 2), "°"),
+    showcase = bs_icon("compass")
+  )
+)
+
+#####Define UI----
 ui <- page_fillable(
   navset_card_tab( 
-    nav_panel("Wave Rose", 
+    #Nav Panel Wave Time Series
+    nav_panel(
+      "Current/Historical Swell Stats", 
+      layout_columns(
+        fill = FALSE,
+        !!!current_wave_stat_value_boxes
+      ),
+      !!!wave_series_cards
+    ),
+    #Wave Rose nav panel
+    nav_panel(
+      "Wave Rose", 
               id = "wave_rose_tab",
+              #Column layouts
               layout_columns(
                 col_widths = c(2, 10),
+                #Page Sidebar
                 page_sidebar(
                   title = "Filters",
                   open = "desktop",
                   fill = TRUE,
+                  #Sidebar
                   sidebar = sidebar(
                     title = "Controls",
+                    #Select Input
                     selectInput(
                       'month_selecter',
                       'Months Filter',
@@ -106,28 +176,27 @@ ui <- page_fillable(
                       multiple=TRUE,
                       selectize=TRUE
                     ),
+                    #Action Button
                     actionButton("update_months", "Update Months")
                   ),
                 ),
+                #Plot Output in first Nav Panel
                 plotOutput("wave_polar_plot", width = "100%", height = "100%", fill = TRUE)
               ),
               ), 
-    nav_panel("Wave Time Series", "Page B content"), 
     nav_panel("Third", "Page C content"), 
     nav_spacer(),
     nav_menu( 
-      "Other links", 
-      nav_panel("D", "Panel D content"), 
-      "----", 
-      "Description:", 
+      "Link to Date Source", 
       nav_item( 
-        a("Shiny", href = "https://shiny.posit.co", target = "_blank") 
+        a("CDIP Data", href = "https://erddap.sensors.axds.co/erddap/info/edu_ucsd_cdip_142/index.html", target = "_blank") 
       ), 
     ), 
   ), 
   id = "tab"
 )
 
+####Define Server----
 server <- function(input, output) {
 
   # Store the selected months, initially set to default values
@@ -180,6 +249,64 @@ server <- function(input, output) {
         ticks.linewidth = 0.3)
       )
   }) %>% bindCache(data())
+  
+  output$interactive_wave_height_plot <- renderPlotly({
+    plot_ly(data = median_stats_height_per_month_day, 
+            x = ~month_day, 
+            y = ~median_wave_height, 
+            type = 'scatter', 
+            mode = 'markers', 
+            #marker = list(color = '00b4d8', size = 5),
+            color = I('#00b4d8')
+    ) %>%
+      layout(
+        xaxis = list(
+          title = 'Date',
+          tickformat = '%b<br>%d',  # Format as abbreviated month
+          dtick = 'M1'        # 1-month interval for x-axis
+        ),
+        yaxis = list(
+          title = ''
+        ),
+        showlegend = FALSE,
+        font = list(family = 'Times New Roman', size = 14, color = '#000000')
+      ) %>% 
+      add_lines(
+        x = ~month_day, 
+        y = ~fitted(loess(median_wave_height ~ as.numeric(month_day))),
+        line = list(color = '#0077b6', width = 2),
+        name = 'Smoothed Line'
+      )
+  })
+  
+  output$interactive_wave_period_plot <- renderPlotly({
+    plot_ly(data = median_stats_height_per_month_day, 
+            x = ~month_day, 
+            y = ~median_period,
+            type = 'scatter', 
+            mode = 'markers', 
+            #marker = list(color = '00b4d8', size = 5),
+            color = I('#00b4d8')
+    ) %>%
+      layout(
+        xaxis = list(
+          title = 'Date',
+          tickformat = '%b<br>%d',  # Format as abbreviated month
+          dtick = 'M1'        # 1-month interval for x-axis
+        ),
+        yaxis = list(
+          title = ''
+        ),
+        showlegend = FALSE,
+        font = list(family = 'Times New Roman', size = 14, color = '#000000')
+      ) %>% 
+      add_lines(
+        x = ~month_day, 
+        y = ~fitted(loess(median_period ~ as.numeric(month_day))),
+        line = list(color = '#0077b6', width = 2),
+        name = 'Smoothed Line'
+      )
+  })
   
 }
 
