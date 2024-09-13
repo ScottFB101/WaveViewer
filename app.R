@@ -8,9 +8,10 @@ library(jsonlite)
 library(akima)
 library(bsicons)
 library(memoise)
+library(leaflet)
+library(plotly)
 
 #TODO make text bigger on polar graph
-#TODO Add Leaflet map of buoy location,
 #TODO add maestro (package) script that automatically loads data during early hours
 #TODO Memoise package to make polar plot caching plots much faster
 
@@ -22,72 +23,77 @@ current_time <- format(Sys.time(), "T%H:%M:%SZ", tz = "UTC") %>%
 current_date <- Sys.Date()
 erddap_url <- glue("https://erddap.sensors.axds.co/erddap/tabledap/edu_ucsd_cdip_142.json?time%2Clatitude%2Clongitude%2Cz%2Csea_surface_wave_mean_period%2Csea_surface_wave_period_at_variance_spectral_density_maximum%2Csea_surface_wave_significant_height%2Csea_surface_wave_from_direction%2Cstation&time%3E=2000-01-01T04%3A45%3A00Z&time%3C={current_date}{current_time[1]}%3A{current_time[2]}%3A{current_time[3]}")
 
-# res = GET(erddap_url)
+res = GET(erddap_url)
 
-# full_erddap_list <- fromJSON(rawToChar(res$content))
-# full_erddap_data <- as.data.frame(full_erddap_list$table$rows)
-# colnames(full_erddap_data) <- full_erddap_list$table$columnNames
-# 
-# # Filter and mutate to get non-blank wave periods
-# filtered_erddap_data <- full_erddap_data %>%
-#   filter(!is.na(sea_surface_wave_mean_period)) %>%
-#   mutate(
-#     time = as.Date(time),
-#     year_month = lubridate::floor_date(time, unit = "month"),
-#     across(starts_with("sea"), as.numeric),
-#     sea_surface_wave_significant_height_ft = sea_surface_wave_significant_height * 3.28084,
-#     month = lubridate::month(time, label = TRUE)
-#   ) %>%
-#   relocate(c("year_month", "month"), .after = time) %>%
-#   mutate(
-#     season = case_when(
-#       month %in% c("Dec", "Jan", "Feb") ~ "Winter",
-#       month %in% c("Mar", "Apr", "May") ~ "Spring",
-#       month %in% c("Jun", "Jul", "Aug") ~ "Summer",
-#       TRUE ~ "Autumn"
-#     )
-#   )
-# 
-# # Summarize by month----
-# summarized_erddap_data <- filtered_erddap_data  %>%
-#   group_by(month) %>%  # group
-#   group_split() %>% # split
-#   lapply(., function(x) {
-#     grouped_frame <- with(
-#       x,
-#       interp(
-#         x = sea_surface_wave_from_direction,
-#         y = sea_surface_wave_significant_height_ft,
-#         z = sea_surface_wave_mean_period,
-#         #extrap = TRUE,
-#         nx = 100,
-#         ny = 100,
-#         duplicate = "mean"
-#       )
-#     ) %>%
-#       interp2xyz() %>%
-#       as.data.frame()
-# 
-#     group_month <- x %>%
-#       pull(month) %>%
-#       unique()
-# 
-#     final_frame <- grouped_frame %>%
-#       mutate(month = group_month) %>%
-#       filter(!is.na(z))
-# 
-#   }) %>%
-#   bind_rows() %>%
-#   rename(
-#     sea_surface_wave_from_direction = x,
-#     sea_surface_wave_significant_height_ft = y,
-#     sea_surface_wave_mean_period = z
-#     )
+full_erddap_list <- fromJSON(rawToChar(res$content))
+full_erddap_data <- as.data.frame(full_erddap_list$table$rows)
+colnames(full_erddap_data) <- full_erddap_list$table$columnNames
+
+####Filter and mutate to get non-blank wave periods----
+filtered_erddap_data <- full_erddap_data %>% 
+  filter(!is.na(sea_surface_wave_mean_period)) %>% 
+  mutate(
+    time = as.Date(time),
+    year = format(time, "%Y"),
+    month = format(time, "%m"),
+    day = format(time, "%d"),
+    month_day = format(time, "%m-%d"),
+    across(starts_with("sea"), as.numeric),
+    sea_surface_wave_significant_height_ft = sea_surface_wave_significant_height * 3.28084,
+    month = lubridate::month(time, label = TRUE)
+  ) %>% 
+  relocate(c("year", "month", "day", "month_day"), .after = time) %>% 
+  mutate(
+    season = case_when(
+      month %in% c("Dec", "Jan", "Feb") ~ "Winter",
+      month %in% c("Mar", "Apr", "May") ~ "Spring",
+      month %in% c("Jun", "Jul", "Aug") ~ "Summer",
+      TRUE ~ "Autumn"
+    )
+  )
+
+####Summarize by month----
+summarized_erddap_data <- filtered_erddap_data  %>%
+  group_by(month) %>%  # group
+  group_split() %>% # split
+  lapply(., function(x) {
+    grouped_frame <- with(
+      x,
+      interp(
+        x = sea_surface_wave_from_direction,
+        y = sea_surface_wave_significant_height_ft,
+        z = sea_surface_wave_mean_period,
+        #extrap = TRUE,
+        nx = 100,
+        ny = 100,
+        duplicate = "mean"
+      )
+    ) %>%
+      interp2xyz() %>%
+      as.data.frame()
+
+    group_month <- x %>%
+      pull(month) %>%
+      unique()
+
+    final_frame <- grouped_frame %>%
+      mutate(month = group_month) %>%
+      filter(!is.na(z))
+
+  }) %>%
+  bind_rows() %>%
+  rename(
+    sea_surface_wave_from_direction = x,
+    sea_surface_wave_significant_height_ft = y,
+    sea_surface_wave_mean_period = z
+    )
 
 unique_months <- unique(summarized_erddap_data$month)
 
 first_date_of_data_collection <- min(filtered_erddap_data$time)
 last_date_of_data_collection <- max(filtered_erddap_data$time)
+
+buoy_position <- as.numeric(c(unique(filtered_erddap_data$longitude), unique(filtered_erddap_data$latitude)))
 
 ####Median Wave Stats processing----
 median_stats_height_per_month_day <- filtered_erddap_data %>%
@@ -194,6 +200,11 @@ wave_height_plotly <- plot_ly(data = median_stats_height_per_month_day,
     line = list(color = '#0077b6', width = 2),
     name = 'Smoothed Line'
   )
+####Buoy leaflet icon----
+icons_list <- icons(
+  iconUrl = 'https://cdn1.iconfinder.com/data/icons/unigrid-bluetone-maps-travel-vol-1/60/007_041_buoy_marine_nautical-1024.png',
+  iconWidth = c(25, 45, 20), iconHeight = c(25, 45, 20)
+)
 
 ####Define UI----
 ui <- page_fillable(
@@ -240,7 +251,10 @@ ui <- page_fillable(
                 plotOutput("wave_polar_plot", width = "100%", height = "100%", fill = TRUE)
               ),
               ), 
-    nav_panel("Third", "Page C content"), 
+    nav_panel(
+      "Buoy Map", 
+      leafletOutput("buoy_leaflet_map", width = "100%", height = "100%")
+      ), 
     nav_spacer(),
     nav_menu( 
       "Link to Data Source", 
@@ -312,6 +326,17 @@ server <- function(input, output) {
   
   output$interactive_wave_period_plot <- renderPlotly({
     wave_period_plotly 
+  })
+  
+  output$buoy_leaflet_map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = -122.55, lat = 37.75, zoom = 10) %>%
+      addMarkers(
+        lng = buoy_position[1], 
+        lat = buoy_position[2], 
+        icon = icons_list, 
+        label = "142 - San Francisco Bar, CA (46237)")
   })
   
 }
