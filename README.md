@@ -1,2 +1,2 @@
 # WaveViewer
- SF Wave Buoy Data Visualizer
+### San Francisco Swell Visualizer
